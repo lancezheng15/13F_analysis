@@ -1,20 +1,27 @@
-[project]
+[tool.poetry]
 name = "cme-13f-filings"
 version = "0.1.0"
 description = "Analysis of Form 13F filings data for CME Group, focusing on institutional investment holdings and trading patterns"
 readme = "README.md"
-requires-python = ">=3.10"
-dependencies = [
-    "pandas>=2.0.0",
-    "numpy>=1.24.0",
-    "pyarrow>=12.0.0",
-    "fastparquet>=0.8.0",
-    "tqdm>=4.65.0",
-    "python-dateutil>=2.8.0",
-    "jupyter>=1.0.0",
-    "matplotlib>=3.7.0",
-    "seaborn>=0.12.0",
-    "plotly>=5.15.0",
-    "scikit-learn>=1.3.0",
-    "openpyxl>=3.1.0"
-]
+package-mode = false
+authors = ["Your Name <you@example.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+pandas = ">=2.0.0"
+numpy = ">=1.24.0"
+pyarrow = ">=12.0.0"
+fastparquet = ">=0.8.0"
+tqdm = ">=4.65.0"
+python-dateutil = ">=2.8.0"
+jupyter = ">=1.0.0"
+matplotlib = ">=3.7.0"
+seaborn = ">=0.12.0"
+plotly = ">=5.15.0"
+scikit-learn = ">=1.3.0"
+openpyxl = ">=3.1.0"
+streamlit = ">=1.28.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
