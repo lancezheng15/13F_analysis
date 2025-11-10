@@ -1,10 +1,15 @@
-# Data files (too large for GitHub)
+# Raw data files (too large for GitHub)
 data/
-processed_data/
-*.parquet
-*.csv
 *.tsv
-*.json
+
+# Processed data files are tracked with Git LFS (see .gitattributes)
+# Only ignore CSV versions (use parquet instead)
+processed_data/*.csv
+
+# Keep processed_data directory structure and small files
+!processed_data/
+!processed_data/*.json
+!processed_data/*.parquet
 
 # Python cache
 __pycache__/
