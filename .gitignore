@@ -84,6 +84,7 @@ tmp/
 
 # Keep important config files
 !pyproject.toml
+!pyproject.toml.local
 !requirements*.txt
 !*.md
 !*.py
