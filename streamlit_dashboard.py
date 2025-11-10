@@ -25,111 +25,156 @@ class PortfolioStreamlitDashboard:
         self.cme_products_data = None
         # Don't load data immediately - use lazy loading
         
-    @st.cache_data(ttl=3600)  # Cache for 1 hour
+    @st.cache_data(ttl=3600, show_spinner="Loading holdings data...")  # Cache for 1 hour
     def load_holdings_data(_self):
         """Load the processed 13F holdings data with caching"""
         file_path = 'processed_data/combined_holdings.parquet'
         try:
             # Check if file exists
             if not os.path.exists(file_path):
-                st.error(f"❌ Data file not found: {file_path}")
-                st.info("💡 **Troubleshooting:**\n"
-                       "- Ensure data files are committed to the repository\n"
-                       "- If using Git LFS, verify files are tracked correctly\n"
-                       "- Check that processed_data directory exists")
                 return pd.DataFrame()
             
-            data = pd.read_parquet(file_path)
+            # Check file size (warn if very large)
+            file_size = os.path.getsize(file_path) / (1024 * 1024)  # MB
+            if file_size > 500:
+                st.warning(f"⚠️ Large file detected ({file_size:.1f} MB). Loading may take a while...")
+            
+            # Load data with error handling
+            try:
+                data = pd.read_parquet(file_path, engine='pyarrow')
+            except Exception as parquet_error:
+                # Try alternative engine
+                try:
+                    data = pd.read_parquet(file_path, engine='fastparquet')
+                except Exception:
+                    st.error(f"❌ Failed to read parquet file: {parquet_error}")
+                    return pd.DataFrame()
             
             # Check if dataframe is empty
             if data.empty:
-                st.warning("⚠️ Holdings data file is empty")
                 return data
             
             # Add quarter information - handle the custom date format
             def parse_data_period(period_str):
                 """Parse the custom data period format like '01JUN2025-31AUG2025_form13f'"""
                 try:
+                    if pd.isna(period_str):
+                        return pd.NaT
                     # Extract the start date part
-                    start_part = period_str.split('-')[0]  # '01JUN2025'
+                    start_part = str(period_str).split('-')[0]  # '01JUN2025'
                     # Parse the date
-                    return pd.to_datetime(start_part, format='%d%b%Y')
+                    return pd.to_datetime(start_part, format='%d%b%Y', errors='coerce')
                 except:
                     return pd.NaT
             
-            data['quarter'] = data['data_period'].apply(parse_data_period).dt.to_period('Q')
+            # Only process if data_period column exists
+            if 'data_period' in data.columns:
+                data['quarter'] = data['data_period'].apply(parse_data_period).dt.to_period('Q')
+            
             return data
-        except FileNotFoundError:
-            st.error(f"❌ File not found: {file_path}")
+        except MemoryError:
+            st.error("❌ Out of memory while loading holdings data. The file may be too large for this environment.")
             return pd.DataFrame()
         except Exception as e:
-            st.error(f"❌ Error loading holdings data: {e}")
+            # Don't show error in cached function to avoid spam
+            # Error will be handled in the calling function
             import traceback
-            st.code(traceback.format_exc())
+            error_msg = f"Error loading holdings: {str(e)}\n{traceback.format_exc()}"
+            print(error_msg)  # Print to console for debugging
             return pd.DataFrame()
     
-    @st.cache_data(ttl=3600)  # Cache for 1 hour
+    @st.cache_data(ttl=3600, show_spinner="Loading managers data...")  # Cache for 1 hour
     def load_managers_data(_self):
         """Load the processed managers data with caching"""
         file_path = 'processed_data/manager_summary.parquet'
         try:
             if not os.path.exists(file_path):
                 return pd.DataFrame()
-            return pd.read_parquet(file_path)
+            try:
+                return pd.read_parquet(file_path, engine='pyarrow')
+            except:
+                return pd.read_parquet(file_path, engine='fastparquet')
         except Exception as e:
-            st.error(f"❌ Error loading managers data: {e}")
+            print(f"Error loading managers data: {e}")  # Log to console
             return pd.DataFrame()
     
-    @st.cache_data(ttl=3600)  # Cache for 1 hour
+    @st.cache_data(ttl=3600, show_spinner="Loading securities data...")  # Cache for 1 hour
     def load_securities_data(_self):
         """Load the processed securities data with caching"""
         file_path = 'processed_data/security_summary.parquet'
         try:
             if not os.path.exists(file_path):
                 return pd.DataFrame()
-            return pd.read_parquet(file_path)
+            try:
+                return pd.read_parquet(file_path, engine='pyarrow')
+            except:
+                return pd.read_parquet(file_path, engine='fastparquet')
         except Exception as e:
-            st.error(f"❌ Error loading securities data: {e}")
+            print(f"Error loading securities data: {e}")  # Log to console
             return pd.DataFrame()
     
-    @st.cache_data(ttl=3600)  # Cache for 1 hour
+    @st.cache_data(ttl=3600, show_spinner="Loading CME products data...")  # Cache for 1 hour
     def load_cme_products_data(_self):
         """Load the filtered CME products data with caching"""
         file_path = 'processed_data/cme_products_filtered.parquet'
         try:
             if not os.path.exists(file_path):
                 return pd.DataFrame()
-            return pd.read_parquet(file_path)
+            try:
+                return pd.read_parquet(file_path, engine='pyarrow')
+            except:
+                return pd.read_parquet(file_path, engine='fastparquet')
         except Exception as e:
-            st.error(f"❌ Error loading CME products data: {e}")
+            print(f"Error loading CME products data: {e}")  # Log to console
             return pd.DataFrame()
     
     def get_holdings_data(self):
         """Get holdings data with lazy loading"""
         if self.holdings_data is None:
-            with st.spinner("Loading holdings data..."):
+            try:
                 self.holdings_data = self.load_holdings_data()
+                if self.holdings_data.empty:
+                    st.error("❌ **Failed to load holdings data**")
+                    st.info("💡 **Possible causes:**\n"
+                           "- Data file is missing or not properly committed\n"
+                           "- Git LFS files may not have been downloaded\n"
+                           "- File may be corrupted or too large for this environment")
+            except Exception as e:
+                st.error(f"❌ **Error loading holdings data:** {e}")
+                import traceback
+                with st.expander("🔍 Show detailed error"):
+                    st.code(traceback.format_exc())
+                self.holdings_data = pd.DataFrame()
         return self.holdings_data
     
     def get_managers_data(self):
         """Get managers data with lazy loading"""
         if self.managers_data is None:
-            with st.spinner("Loading managers data..."):
+            try:
                 self.managers_data = self.load_managers_data()
+            except Exception as e:
+                st.error(f"❌ Error loading managers data: {e}")
+                self.managers_data = pd.DataFrame()
         return self.managers_data
     
     def get_securities_data(self):
         """Get securities data with lazy loading"""
         if self.securities_data is None:
-            with st.spinner("Loading securities data..."):
+            try:
                 self.securities_data = self.load_securities_data()
+            except Exception as e:
+                st.error(f"❌ Error loading securities data: {e}")
+                self.securities_data = pd.DataFrame()
         return self.securities_data
     
     def get_cme_products_data(self):
         """Get CME products data with lazy loading"""
         if self.cme_products_data is None:
-            with st.spinner("Loading CME products data..."):
+            try:
                 self.cme_products_data = self.load_cme_products_data()
+            except Exception as e:
+                st.error(f"❌ Error loading CME products data: {e}")
+                self.cme_products_data = pd.DataFrame()
         return self.cme_products_data
     
     def _get_descriptive_security_class(self, security_class):
@@ -870,20 +915,39 @@ def main():
     
     dashboard = st.session_state.dashboard
     
-    # Check if essential data files exist
+    # Check if essential data files exist (but don't load them yet)
     essential_files = [
-        'processed_data/combined_holdings.parquet',
-        'processed_data/manager_summary.parquet',
-        'processed_data/security_summary.parquet'
+        'processed_data/manager_summary.parquet',  # Load this first (smallest)
+        'processed_data/security_summary.parquet',  # Then this
+        'processed_data/combined_holdings.parquet'  # Finally this (largest)
     ]
     
-    missing_files = [f for f in essential_files if not os.path.exists(f)]
+    # Check file existence and sizes
+    file_info = {}
+    for file in essential_files:
+        if os.path.exists(file):
+            try:
+                size_mb = os.path.getsize(file) / (1024 * 1024)
+                file_info[file] = {
+                    "exists": True,
+                    "size_mb": round(size_mb, 2)
+                }
+                # Check if file is suspiciously small (might be LFS pointer)
+                if size_mb < 0.1 and 'combined_holdings' in file:
+                    st.warning(f"⚠️ File {file} is very small ({size_mb:.2f} MB). This might be a Git LFS pointer file, not the actual data.")
+            except Exception as e:
+                file_info[file] = {"exists": True, "error": str(e)}
+        else:
+            file_info[file] = {"exists": False}
+    
+    missing_files = [f for f in essential_files if not file_info[f]["exists"]]
     if missing_files:
         st.error("❌ **Missing essential data files**")
         st.markdown("The following files are required but not found:")
         for file in missing_files:
             st.markdown(f"- `{file}`")
         st.info("💡 **Note:** If you're using Git LFS, ensure files are properly committed and pushed to the repository.")
+        st.json(file_info)
         st.stop()
     
     # Sidebar controls
@@ -892,19 +956,55 @@ def main():
     # Auto-refresh toggle
     auto_refresh = st.sidebar.checkbox("🔄 Auto-refresh (30s)", value=False)
     
-    # Manager selection with search
-    managers_list = dashboard.get_managers_list()
+    # Try to load managers list (this will trigger data loading)
+    try:
+        managers_list = dashboard.get_managers_list()
+    except Exception as e:
+        st.error(f"❌ **Error loading managers list:** {e}")
+        st.info("**Debugging info:**")
+        debug_info = {
+            "processed_data_exists": os.path.exists('processed_data'),
+            "holdings_file_exists": os.path.exists('processed_data/combined_holdings.parquet'),
+            "managers_file_exists": os.path.exists('processed_data/manager_summary.parquet'),
+            "security_file_exists": os.path.exists('processed_data/security_summary.parquet'),
+        }
+        if os.path.exists('processed_data'):
+            try:
+                debug_info["files_in_processed_data"] = os.listdir('processed_data')
+                # Check file sizes
+                for file in debug_info["files_in_processed_data"]:
+                    file_path = os.path.join('processed_data', file)
+                    if os.path.isfile(file_path):
+                        size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                        debug_info[f"{file}_size_mb"] = round(size_mb, 2)
+            except Exception as list_error:
+                debug_info["list_error"] = str(list_error)
+        st.json(debug_info)
+        st.stop()
     
     # Check if we have managers data
     if not managers_list:
         st.warning("⚠️ No managers data available. Please check that data files are properly loaded.")
         st.info("**Debugging info:**")
-        st.json({
+        debug_info = {
             "processed_data_exists": os.path.exists('processed_data'),
-            "files_in_processed_data": os.listdir('processed_data') if os.path.exists('processed_data') else [],
             "holdings_file_exists": os.path.exists('processed_data/combined_holdings.parquet'),
             "managers_file_exists": os.path.exists('processed_data/manager_summary.parquet'),
-        })
+        }
+        if os.path.exists('processed_data'):
+            try:
+                debug_info["files_in_processed_data"] = os.listdir('processed_data')
+            except:
+                pass
+        st.json(debug_info)
+        
+        # Check if files exist but are empty or corrupted
+        managers_file = 'processed_data/manager_summary.parquet'
+        if os.path.exists(managers_file):
+            st.info("💡 File exists but appears to be empty or unreadable. This may indicate:")
+            st.markdown("- Git LFS file was not properly downloaded")
+            st.markdown("- File is corrupted")
+            st.markdown("- File permissions issue")
         st.stop()
     
     # Add search functionality
@@ -993,20 +1093,28 @@ def main():
         selected_manager = None
     
     # Quarter selection
-    available_quarters = dashboard.get_available_quarters()
-    if len(available_quarters) >= 2:
-        current_quarter = st.sidebar.selectbox(
-            "Current Quarter:",
-            available_quarters,
-            index=0
-        )
-        previous_quarter = st.sidebar.selectbox(
-            "Previous Quarter:",
-            available_quarters,
-            index=1
-        )
-    else:
-        st.sidebar.error("Need at least 2 quarters of data for comparison")
+    try:
+        available_quarters = dashboard.get_available_quarters()
+        if len(available_quarters) >= 2:
+            current_quarter = st.sidebar.selectbox(
+                "Current Quarter:",
+                available_quarters,
+                index=0
+            )
+            previous_quarter = st.sidebar.selectbox(
+                "Previous Quarter:",
+                available_quarters,
+                index=1
+            )
+        elif len(available_quarters) == 1:
+            st.sidebar.warning("Only one quarter of data available. Cannot compare quarters.")
+            current_quarter = available_quarters[0]
+            previous_quarter = available_quarters[0]
+        else:
+            st.sidebar.error("No quarter data available. Please check holdings data file.")
+            st.stop()
+    except Exception as e:
+        st.sidebar.error(f"Error loading quarters: {e}")
         st.stop()
     
     # Main dashboard content
