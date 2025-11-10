@@ -73,8 +73,9 @@ logs/
 temp/
 tmp/
 
-# Streamlit
-.streamlit/
+# Streamlit (but keep config.toml)
+.streamlit/*
+!.streamlit/config.toml
 
 # Large files that shouldn't be tracked
 *.pdf

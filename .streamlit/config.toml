@@ -1,0 +1,21 @@
+[server]
+# Disable file watcher to avoid inotify watch limit issues
+fileWatcherType = "none"
+
+# Alternatively, we can use polling instead of inotify
+# fileWatcherType = "poll"
+
+# Increase timeout for large files
+maxUploadSize = 200
+
+[runner]
+# Disable fast reruns for better stability
+fastReruns = false
+
+# Increase memory limit
+maxMessageSize = 200
+
+[browser]
+# Don't automatically open browser (for cloud deployment)
+gatherUsageStats = false
+
