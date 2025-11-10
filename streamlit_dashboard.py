@@ -13,6 +13,8 @@ from plotly.subplots import make_subplots
 import time
 from datetime import datetime, timedelta
 import warnings
+import os
+import sys
 warnings.filterwarnings('ignore')
 
 class PortfolioStreamlitDashboard:
@@ -26,8 +28,23 @@ class PortfolioStreamlitDashboard:
     @st.cache_data(ttl=3600)  # Cache for 1 hour
     def load_holdings_data(_self):
         """Load the processed 13F holdings data with caching"""
+        file_path = 'processed_data/combined_holdings.parquet'
         try:
-            data = pd.read_parquet('processed_data/combined_holdings.parquet')
+            # Check if file exists
+            if not os.path.exists(file_path):
+                st.error(f"❌ Data file not found: {file_path}")
+                st.info("💡 **Troubleshooting:**\n"
+                       "- Ensure data files are committed to the repository\n"
+                       "- If using Git LFS, verify files are tracked correctly\n"
+                       "- Check that processed_data directory exists")
+                return pd.DataFrame()
+            
+            data = pd.read_parquet(file_path)
+            
+            # Check if dataframe is empty
+            if data.empty:
+                st.warning("⚠️ Holdings data file is empty")
+                return data
             
             # Add quarter information - handle the custom date format
             def parse_data_period(period_str):
@@ -42,15 +59,23 @@ class PortfolioStreamlitDashboard:
             
             data['quarter'] = data['data_period'].apply(parse_data_period).dt.to_period('Q')
             return data
+        except FileNotFoundError:
+            st.error(f"❌ File not found: {file_path}")
+            return pd.DataFrame()
         except Exception as e:
             st.error(f"❌ Error loading holdings data: {e}")
+            import traceback
+            st.code(traceback.format_exc())
             return pd.DataFrame()
     
     @st.cache_data(ttl=3600)  # Cache for 1 hour
     def load_managers_data(_self):
         """Load the processed managers data with caching"""
+        file_path = 'processed_data/manager_summary.parquet'
         try:
-            return pd.read_parquet('processed_data/manager_summary.parquet')
+            if not os.path.exists(file_path):
+                return pd.DataFrame()
+            return pd.read_parquet(file_path)
         except Exception as e:
             st.error(f"❌ Error loading managers data: {e}")
             return pd.DataFrame()
@@ -58,8 +83,11 @@ class PortfolioStreamlitDashboard:
     @st.cache_data(ttl=3600)  # Cache for 1 hour
     def load_securities_data(_self):
         """Load the processed securities data with caching"""
+        file_path = 'processed_data/security_summary.parquet'
         try:
-            return pd.read_parquet('processed_data/security_summary.parquet')
+            if not os.path.exists(file_path):
+                return pd.DataFrame()
+            return pd.read_parquet(file_path)
         except Exception as e:
             st.error(f"❌ Error loading securities data: {e}")
             return pd.DataFrame()
@@ -67,8 +95,11 @@ class PortfolioStreamlitDashboard:
     @st.cache_data(ttl=3600)  # Cache for 1 hour
     def load_cme_products_data(_self):
         """Load the filtered CME products data with caching"""
+        file_path = 'processed_data/cme_products_filtered.parquet'
         try:
-            return pd.read_parquet('processed_data/cme_products_filtered.parquet')
+            if not os.path.exists(file_path):
+                return pd.DataFrame()
+            return pd.read_parquet(file_path)
         except Exception as e:
             st.error(f"❌ Error loading CME products data: {e}")
             return pd.DataFrame()
@@ -816,11 +847,44 @@ def main():
     st.title("📊 13F Portfolio Streamlit Dashboard")
     st.markdown("**Real-time monitoring of investment manager portfolio changes between quarters**")
     
+    # Check if processed_data directory exists
+    if not os.path.exists('processed_data'):
+        st.error("❌ **Data directory not found**")
+        st.markdown("""
+        The `processed_data` directory is missing. Please ensure:
+        1. Data files are committed to the repository
+        2. If using Git LFS, files are properly tracked
+        3. Files are present in the repository root
+        
+        **Expected files:**
+        - `processed_data/combined_holdings.parquet`
+        - `processed_data/manager_summary.parquet`
+        - `processed_data/security_summary.parquet`
+        - `processed_data/cme_products_filtered.parquet` (optional)
+        """)
+        st.stop()
+    
     # Initialize dashboard
     if 'dashboard' not in st.session_state:
         st.session_state.dashboard = PortfolioStreamlitDashboard()
     
     dashboard = st.session_state.dashboard
+    
+    # Check if essential data files exist
+    essential_files = [
+        'processed_data/combined_holdings.parquet',
+        'processed_data/manager_summary.parquet',
+        'processed_data/security_summary.parquet'
+    ]
+    
+    missing_files = [f for f in essential_files if not os.path.exists(f)]
+    if missing_files:
+        st.error("❌ **Missing essential data files**")
+        st.markdown("The following files are required but not found:")
+        for file in missing_files:
+            st.markdown(f"- `{file}`")
+        st.info("💡 **Note:** If you're using Git LFS, ensure files are properly committed and pushed to the repository.")
+        st.stop()
     
     # Sidebar controls
     st.sidebar.header("🎛️ Dashboard Controls")
@@ -830,6 +894,18 @@ def main():
     
     # Manager selection with search
     managers_list = dashboard.get_managers_list()
+    
+    # Check if we have managers data
+    if not managers_list:
+        st.warning("⚠️ No managers data available. Please check that data files are properly loaded.")
+        st.info("**Debugging info:**")
+        st.json({
+            "processed_data_exists": os.path.exists('processed_data'),
+            "files_in_processed_data": os.listdir('processed_data') if os.path.exists('processed_data') else [],
+            "holdings_file_exists": os.path.exists('processed_data/combined_holdings.parquet'),
+            "managers_file_exists": os.path.exists('processed_data/manager_summary.parquet'),
+        })
+        st.stop()
     
     # Add search functionality
     st.sidebar.markdown("### 🔍 Search Manager")
@@ -899,14 +975,19 @@ def main():
         
         # Show manager info if selected
         if selected_manager:
-            manager_info = dashboard.managers_data[dashboard.managers_data['manager_name'] == selected_manager]
-            if not manager_info.empty:
-                manager_data = manager_info.iloc[0]
-                st.sidebar.markdown("---")
-                st.sidebar.markdown("### 📊 Manager Info")
-                st.sidebar.metric("Portfolio Value", f"${manager_data['total_market_value']/1e9:.1f}B")
-                st.sidebar.metric("Total Holdings", f"{manager_data['total_holdings']:,}")
-                st.sidebar.metric("Unique Securities", f"{manager_data['unique_securities']:,}")
+            managers_data = dashboard.get_managers_data()
+            if not managers_data.empty and 'manager_name' in managers_data.columns:
+                manager_info = managers_data[managers_data['manager_name'] == selected_manager]
+                if not manager_info.empty:
+                    manager_data = manager_info.iloc[0]
+                    st.sidebar.markdown("---")
+                    st.sidebar.markdown("### 📊 Manager Info")
+                    if 'total_market_value' in manager_data:
+                        st.sidebar.metric("Portfolio Value", f"${manager_data['total_market_value']/1e9:.1f}B")
+                    if 'total_holdings' in manager_data:
+                        st.sidebar.metric("Total Holdings", f"{manager_data['total_holdings']:,}")
+                    if 'unique_securities' in manager_data:
+                        st.sidebar.metric("Unique Securities", f"{manager_data['unique_securities']:,}")
     else:
         st.sidebar.warning("No managers found matching your search")
         selected_manager = None
